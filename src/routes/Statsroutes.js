@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { proteger, restreindre } = require('../middlewares/authMiddleware');
-const Commande = require('../models/Commande');
-const Commercant = require('../models/Commercant');
-const User = require('../models/User');
+const Commande = require('../models/commande');
+const Commercant = require('../models/commercant');
+const User = require('../models/user');
 
 router.get('/admin', proteger, restreindre('admin'), async (req, res) => {
     try {

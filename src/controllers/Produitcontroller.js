@@ -1,5 +1,5 @@
-const Produit = require('../models/Produit');
-const Commercant = require('../models/Commercant');
+const Produit = require('../models/produit');
+const Commercant = require('../models/commercant');
 const path = require('path');
 
 // Récupérer les produits d'un commercant

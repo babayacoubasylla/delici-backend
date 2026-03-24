@@ -1,7 +1,7 @@
-const Commande = require('../models/Commande');
-const Commercant = require('../models/Commercant');
-const Produit = require('../models/Produit');
-const User = require('../models/User');
+const Commande = require('../models/commande');
+const Commercant = require('../models/commercant');
+const Produit = require('../models/produit');
+const User = require('../models/user');
 
 // ==================== ASSIGNATION AUTOMATIQUE ====================
 const assignerLivreurAutomatique = async (commande, req) => {
@@ -452,15 +452,15 @@ exports.getCommandesEnCoursLivreur = async (req, res) => {
             livreur: req.user._id,
             statut: { $in: ['livreur_assigne', 'en_collecte', 'en_livraison'] }
         })
-        .populate('commercant', 'nom_boutique adresse ville telephone')
-        .populate('client', 'nom prenom telephone')
-        .select('-historique_statuts -__v -note_client -annulation')
-        .sort({ updatedAt: -1 });
+            .populate('commercant', 'nom_boutique adresse ville telephone')
+            .populate('client', 'nom prenom telephone')
+            .select('-historique_statuts -__v -note_client -annulation')
+            .sort({ updatedAt: -1 });
 
-        res.status(200).json({ 
-            status: 'success', 
-            results: commandes.length, 
-            data: { commandes } 
+        res.status(200).json({
+            status: 'success',
+            results: commandes.length,
+            data: { commandes }
         });
     } catch (error) {
         console.error('Erreur commandes en cours:', error);

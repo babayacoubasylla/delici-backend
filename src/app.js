@@ -91,7 +91,7 @@ mongoose.connection.on('disconnected', () => console.warn('🟠 Mongoose déconn
 
 const checkInitialData = async () => {
     try {
-        const User = require('./models/User');
+        const User = require('./models/user');
         const userCount = await User.countDocuments();
         console.log(`👥 Utilisateurs en base: ${userCount}`);
     } catch (error) {

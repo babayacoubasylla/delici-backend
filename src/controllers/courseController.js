@@ -1,5 +1,5 @@
-const Course = require('../models/Course');
-const User = require('../models/User');
+const Course = require('../models/course');
+const User = require('../models/user');
 
 // ==================== CRÉER UNE COURSE (CLIENT) ====================
 exports.creerCourse = async (req, res) => {
@@ -84,7 +84,7 @@ exports.mesCourses = async (req, res) => {
 exports.coursesDisponibles = async (req, res) => {
     try {
         console.log(`📦 Récupération courses disponibles pour livreur ${req.user._id} dans ${req.user.ville}`);
-        
+
         const courses = await Course.find({
             statut: 'en_attente',
             ville: req.user.ville,
@@ -94,7 +94,7 @@ exports.coursesDisponibles = async (req, res) => {
             .sort({ createdAt: 1 });
 
         console.log(`✅ ${courses.length} courses disponibles trouvées`);
-        
+
         res.status(200).json({
             status: 'success',
             results: courses.length,
@@ -114,7 +114,7 @@ exports.accepterCourse = async (req, res) => {
             livreur: req.user._id,
             statut: { $in: ['acceptee', 'en_cours'] }
         });
-        
+
         if (courseEnCours) {
             return res.status(400).json({
                 status: 'error',
@@ -174,9 +174,9 @@ exports.changerStatutCourse = async (req, res) => {
         const statutsAutorises = ['en_cours', 'terminee'];
 
         if (!statutsAutorises.includes(statut)) {
-            return res.status(400).json({ 
-                status: 'error', 
-                message: 'Statut non autorisé. Utilisez: en_cours ou terminee' 
+            return res.status(400).json({
+                status: 'error',
+                message: 'Statut non autorisé. Utilisez: en_cours ou terminee'
             });
         }
 
@@ -186,9 +186,9 @@ exports.changerStatutCourse = async (req, res) => {
         }).populate('client', 'nom prenom telephone _id');
 
         if (!course) {
-            return res.status(404).json({ 
-                status: 'error', 
-                message: 'Course introuvable' 
+            return res.status(404).json({
+                status: 'error',
+                message: 'Course introuvable'
             });
         }
 
@@ -221,7 +221,7 @@ exports.changerStatutCourse = async (req, res) => {
                     message: 'Votre course est terminée. Merci !'
                 }
             };
-            
+
             notifier(course.client._id.toString(), 'statut_course', {
                 type: 'statut_course',
                 titre: messages[statut].titre,
@@ -246,7 +246,7 @@ exports.changerStatutCourse = async (req, res) => {
         res.status(200).json({
             status: 'success',
             message: statut === 'terminee' ? '🎉 Course terminée !' : `🛵 Course ${statut}`,
-            data: { 
+            data: {
                 course,
                 google_maps_url: googleMapsUrl,
                 client_telephone: course.client?.telephone
@@ -305,7 +305,7 @@ exports.annulerCourse = async (req, res) => {
 exports.mesCoursesList = async (req, res) => {
     try {
         console.log(`📦 Récupération des courses pour livreur ${req.user._id}`);
-        
+
         const { statut } = req.query;
         const filtres = { livreur: req.user._id };
         if (statut) filtres.statut = statut;
@@ -315,7 +315,7 @@ exports.mesCoursesList = async (req, res) => {
             .sort({ createdAt: -1 });
 
         console.log(`✅ ${courses.length} courses trouvées pour le livreur`);
-        
+
         res.status(200).json({
             status: 'success',
             results: courses.length,
@@ -323,8 +323,8 @@ exports.mesCoursesList = async (req, res) => {
         });
     } catch (error) {
         console.error('❌ Erreur mesCoursesList:', error);
-        res.status(500).json({ 
-            status: 'error', 
+        res.status(500).json({
+            status: 'error',
             message: error.message,
             stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
@@ -365,10 +365,10 @@ exports.noterCourse = async (req, res) => {
                 livreur: course.livreur,
                 'note_client.note': { $exists: true }
             }).select('note_client.note');
-            
+
             const sommeNotes = toutesNotes.reduce((sum, c) => sum + c.note_client.note, 0);
             const moyenne = sommeNotes / toutesNotes.length;
-            
+
             await User.findByIdAndUpdate(course.livreur, {
                 'livreur_info.note_moyenne': moyenne
             });
@@ -416,7 +416,7 @@ exports.assignerLivreur = async (req, res) => {
             livreur: livreur_id,
             statut: { $in: ['acceptee', 'en_cours'] }
         });
-        
+
         if (courseEnCours) {
             return res.status(400).json({
                 status: 'error',
@@ -431,9 +431,9 @@ exports.assignerLivreur = async (req, res) => {
         ).populate('client', 'nom prenom telephone');
 
         if (!course) {
-            return res.status(404).json({ 
-                status: 'error', 
-                message: 'Course introuvable' 
+            return res.status(404).json({
+                status: 'error',
+                message: 'Course introuvable'
             });
         }
 
@@ -471,13 +471,13 @@ exports.statsLivreur = async (req, res) => {
 
         const totalCourses = coursesTerminees.length;
         const gainsTotal = coursesTerminees.reduce((sum, c) => sum + (c.paiement.montant * 0.8), 0);
-        
+
         const notes = coursesTerminees
             .filter(c => c.note_client?.note)
             .map(c => c.note_client.note);
-        
-        const moyenneNote = notes.length > 0 
-            ? notes.reduce((sum, n) => sum + n, 0) / notes.length 
+
+        const moyenneNote = notes.length > 0
+            ? notes.reduce((sum, n) => sum + n, 0) / notes.length
             : 0;
 
         res.status(200).json({

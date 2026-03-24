@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { proteger, restreindre } = require('../middlewares/authMiddleware');
-const User = require('../models/User');
+const User = require('../models/user');
 
 router.get('/', proteger, restreindre('admin', 'gerant_zone'), async (req, res) => {
     try {

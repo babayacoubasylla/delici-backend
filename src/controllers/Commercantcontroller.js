@@ -1,5 +1,5 @@
-const Commercant = require('../models/Commercant');
-const User = require('../models/User');
+const Commercant = require('../models/commercant');
+const User = require('../models/user');
 
 // ==================== LISTE DES COMMERCANTS ====================
 exports.getCommercants = async (req, res) => {
