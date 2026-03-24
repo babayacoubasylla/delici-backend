@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { proteger, restreindre } = require('../middlewares/authMiddleware');
-const Zone = require('../models/Zone');
+const Zone = require('../models/zone');
 
 router.get('/', async (req, res) => {
     try {
