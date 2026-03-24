@@ -11,64 +11,60 @@ require('dotenv').config();
 const app = express();
 const httpServer = createServer(app);
 
+// ==================== CORS ORIGINS ====================
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    process.env.FRONTEND_URL, // URL Vercel en production
+].filter(Boolean);
+
 // ==================== SOCKET.IO ====================
 const io = new Server(httpServer, {
     cors: {
-        origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+        origin: allowedOrigins,
         methods: ['GET', 'POST'],
         credentials: true
     }
 });
 
-// Stocker les connexions actives : userId -> socketId
 const utilisateursConnectes = new Map();
 
 io.on('connection', (socket) => {
     console.log(`🔌 Socket connecté: ${socket.id}`);
 
-    // L'utilisateur s'identifie avec son userId
     socket.on('identifier', (userId) => {
         utilisateursConnectes.set(userId, socket.id);
-        console.log(`👤 User ${userId} connecté via socket ${socket.id}`);
         socket.emit('identifie', { message: 'Connecté aux notifications !' });
     });
 
-    // Rejoindre une room (ville, role)
     socket.on('rejoindre_room', (room) => {
         socket.join(room);
-        console.log(`📍 Socket ${socket.id} a rejoint la room: ${room}`);
     });
 
     socket.on('disconnect', () => {
-        // Nettoyer la Map
         for (const [userId, socketId] of utilisateursConnectes.entries()) {
             if (socketId === socket.id) {
                 utilisateursConnectes.delete(userId);
-                console.log(`❌ User ${userId} déconnecté`);
                 break;
             }
         }
     });
 });
 
-// Fonction utilitaire pour envoyer une notification à un utilisateur
 const notifierUtilisateur = (userId, evenement, data) => {
     const socketId = utilisateursConnectes.get(userId?.toString());
     if (socketId) {
         io.to(socketId).emit(evenement, data);
-        console.log(`📨 Notification envoyée à ${userId}: ${evenement}`);
         return true;
     }
     return false;
 };
 
-// Fonction pour notifier une room entière (ex: tous les livreurs de Gagnoa)
 const notifierRoom = (room, evenement, data) => {
     io.to(room).emit(evenement, data);
-    console.log(`📢 Notification room ${room}: ${evenement}`);
 };
 
-// Rendre io et les fonctions disponibles globalement
 app.set('io', io);
 app.set('notifierUtilisateur', notifierUtilisateur);
 app.set('notifierRoom', notifierRoom);
@@ -84,7 +80,7 @@ const connectDB = async (retryCount = 0) => {
         await checkInitialData();
     } catch (error) {
         const delay = Math.min(5000 * Math.pow(1.5, retryCount), maxDelay);
-        console.error(`❌ Erreur connexion DB (tentative ${retryCount + 1}):`, error.message);
+        console.error(`❌ Erreur DB (tentative ${retryCount + 1}):`, error.message);
         setTimeout(() => connectDB(retryCount + 1), delay);
     }
 };
@@ -106,19 +102,20 @@ const checkInitialData = async () => {
 connectDB();
 
 // ==================== MIDDLEWARES ====================
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+    origin: (origin, callback) => {
+        // Autoriser les requêtes sans origin (Postman, mobile...)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error(`CORS bloqué: ${origin}`));
+    },
     credentials: true
 }));
-app.use(morgan('dev'));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-    next();
-});
 
 // ==================== ROUTES ====================
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -172,6 +169,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Serveur démarré sur le port ${PORT}`);
     console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
     console.log(`📡 Socket.io activé`);
+    console.log(`🌐 Origins autorisées: ${allowedOrigins.join(', ')}`);
     console.log('='.repeat(60));
 });
 
