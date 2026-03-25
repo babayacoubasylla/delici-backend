@@ -1,16 +1,175 @@
-const Commercant = require('../models/commercant');
-const User = require('../models/user');
+const Commercant = require('../models/Commercant');
+const User = require('../models/User');
+const Produit = require('../models/Produit');
 
-// ==================== LISTE DES COMMERCANTS (CLIENT) ====================
-exports.getCommercants = async (req, res) => {
+// Déterminer la catégorie principale en fonction du type de commerce
+const determineCategorie = (type_commerce) => {
+    const categories = {
+        'supermarché_épicerie': 'alimentation',
+        'boulangerie_pâtisserie': 'alimentation',
+        'marché_légumes': 'alimentation',
+        'restaurant_fastfood': 'alimentation',
+        'boucherie_poissonnerie': 'alimentation',
+        'téléphonie_électronique': 'électronique',
+        'vêtements_mode': 'mode',
+        'coiffure_beauté': 'beauté',
+        'pharmacie_parapharmacie': 'beauté',
+        'quincaillerie_bricolage': 'autre',
+        'services': 'services',
+        'autre': 'autre'
+    };
+    return categories[type_commerce] || 'autre';
+};
+
+// ==================== INSCRIPTION COMMERCANT ====================
+exports.inscrireCommerce = async (req, res) => {
     try {
-        const { ville, categorie, page = 1, limit = 20 } = req.query;
-        const filtres = { statut: 'actif' };
+        const {
+            nom_boutique, type_commerce, description,
+            ville, adresse, telephone, email
+        } = req.body;
+
+        const commerceExistant = await Commercant.findOne({ proprietaire: req.user._id });
+        if (commerceExistant) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Vous avez déjà une boutique enregistrée'
+            });
+        }
+
+        const commercant = await Commercant.create({
+            proprietaire: req.user._id,
+            nom_boutique,
+            type_commerce,
+            categorie: determineCategorie(type_commerce),
+            description,
+            ville,
+            adresse,
+            telephone,
+            email: email || req.user.email,
+            est_valide: false
+        });
+
+        await User.findByIdAndUpdate(req.user._id, { role: 'commercant' });
+
+        res.status(201).json({
+            status: 'success',
+            message: 'Votre demande d\'inscription a été envoyée. En attente de validation par l\'administrateur.',
+            data: { commercant }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// ==================== MON COMPTE ====================
+exports.monCompte = async (req, res) => {
+    try {
+        const commercant = await Commercant.findOne({ proprietaire: req.user._id })
+            .populate('proprietaire', 'nom prenom email telephone');
+
+        if (!commercant) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Commerce non trouvé'
+            });
+        }
+
+        res.status(200).json({
+            status: 'success',
+            data: { commercant }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// ==================== METTRE À JOUR MON COMPTE ====================
+exports.mettreAJourMonCompte = async (req, res) => {
+    try {
+        const updates = req.body;
+        const allowedUpdates = [
+            'nom_boutique', 'description', 'adresse', 'telephone',
+            'horaires', 'frais_livraison', 'commande_minimum',
+            'temps_preparation_moyen', 'est_ouvert'
+        ];
+
+        const filteredUpdates = {};
+        allowedUpdates.forEach(field => {
+            if (updates[field] !== undefined) {
+                filteredUpdates[field] = updates[field];
+            }
+        });
+
+        const commercant = await Commercant.findOneAndUpdate(
+            { proprietaire: req.user._id },
+            filteredUpdates,
+            { new: true, runValidators: true }
+        );
+
+        if (!commercant) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Commerce non trouvé'
+            });
+        }
+
+        res.status(200).json({
+            status: 'success',
+            message: 'Informations mises à jour',
+            data: { commercant }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// ==================== TOUS LES COMMERCANTS (ADMIN) ====================
+exports.getAllCommercants = async (req, res) => {
+    try {
+        const { statut, type_commerce, ville, page = 1, limit = 20 } = req.query;
+        const filtres = {};
+
+        if (statut === 'en_attente') filtres.est_valide = false;
+        else if (statut === 'valide') filtres.est_valide = true;
+        if (type_commerce) filtres.type_commerce = type_commerce;
         if (ville) filtres.ville = ville;
-        if (categorie) filtres.categorie = categorie;
 
         const commercants = await Commercant.find(filtres)
-            .select('-__v')
+            .populate('proprietaire', 'nom prenom email telephone')
+            .populate('valide_par', 'nom prenom')
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit))
+            .sort({ createdAt: -1 });
+
+        const total = await Commercant.countDocuments(filtres);
+
+        res.status(200).json({
+            status: 'success',
+            results: commercants.length,
+            total,
+            data: { commercants }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// ==================== COMMERCANTS VALIDÉS (PUBLIC) ====================
+exports.getCommercantsValides = async (req, res) => {
+    try {
+        const { type_commerce, categorie, ville, search, page = 1, limit = 20 } = req.query;
+        const filtres = { est_valide: true, est_actif: true };
+
+        if (type_commerce) filtres.type_commerce = type_commerce;
+        if (categorie) filtres.categorie = categorie;
+        if (ville) filtres.ville = ville;
+        if (search) {
+            filtres.$text = { $search: search };
+        }
+
+        const commercants = await Commercant.find(filtres)
+            .select('nom_boutique type_commerce categorie adresse ville logo photo_couverture note_moyenne est_ouvert frais_livraison commande_minimum')
             .skip((page - 1) * limit)
             .limit(parseInt(limit))
             .sort({ note_moyenne: -1 });
@@ -25,141 +184,185 @@ exports.getCommercants = async (req, res) => {
     }
 };
 
-// ==================== UN COMMERCANT ====================
-exports.getCommercant = async (req, res) => {
-    try {
-        const commercant = await Commercant.findById(req.params.id);
-        if (!commercant) {
-            return res.status(404).json({ status: 'error', message: 'Commerce introuvable' });
-        }
-        res.status(200).json({ status: 'success', data: { commercant } });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-    }
-};
-
-// ==================== CRÉER MON COMMERCE ====================
-exports.creerMonCommerce = async (req, res) => {
-    try {
-        const existant = await Commercant.findOne({ proprietaire: req.user._id });
-        if (existant) {
-            return res.status(400).json({ status: 'error', message: 'Vous avez déjà un commerce enregistré' });
-        }
-
-        const {
-            nom_boutique, categorie, description, adresse,
-            telephone, frais_livraison, temps_preparation_moyen,
-            commande_minimum, ville
-        } = req.body;
-
-        const commercant = await Commercant.create({
-            proprietaire: req.user._id,
-            nom_boutique,
-            categorie,
-            description,
-            adresse,
-            telephone: telephone || req.user.telephone,
-            frais_livraison: frais_livraison || 500,
-            temps_preparation_moyen: temps_preparation_moyen || 20,
-            commande_minimum: commande_minimum || 1000,
-            ville: ville || req.user.ville,
-            statut: 'actif', // ✅ Validé automatiquement
-            est_ouvert: false,
-        });
-
-        res.status(201).json({
-            status: 'success',
-            message: 'Commerce créé avec succès !',
-            data: { commercant }
-        });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-    }
-};
-
-// ==================== MON COMMERCE (détails) ====================
-exports.monCommerce = async (req, res) => {
-    try {
-        const commercant = await Commercant.findOne({ proprietaire: req.user._id });
-        if (!commercant) {
-            return res.status(404).json({ status: 'error', message: 'Aucun commerce trouvé' });
-        }
-        res.status(200).json({ status: 'success', data: { commercant } });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-    }
-};
-
-// ==================== MODIFIER MON COMMERCE ====================
-exports.modifierMonCommerce = async (req, res) => {
-    try {
-        const commercant = await Commercant.findOneAndUpdate(
-            { proprietaire: req.user._id },
-            { $set: req.body },
-            { new: true, runValidators: true }
-        );
-        if (!commercant) {
-            return res.status(404).json({ status: 'error', message: 'Commerce introuvable' });
-        }
-        res.status(200).json({ status: 'success', message: 'Commerce mis à jour !', data: { commercant } });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-    }
-};
-
-// ==================== OUVRIR / FERMER ====================
-exports.toggleOuverture = async (req, res) => {
-    try {
-        const commercant = await Commercant.findOne({ proprietaire: req.user._id });
-        if (!commercant) {
-            return res.status(404).json({ status: 'error', message: 'Commerce introuvable' });
-        }
-        commercant.est_ouvert = !commercant.est_ouvert;
-        await commercant.save();
-        res.status(200).json({
-            status: 'success',
-            message: commercant.est_ouvert ? '🟢 Commerce ouvert !' : '🔴 Commerce fermé',
-            data: { est_ouvert: commercant.est_ouvert }
-        });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-    }
-};
-
-// ==================== ADMIN - TOUS LES COMMERCANTS ====================
-exports.tousLesCommercants = async (req, res) => {
-    try {
-        const { statut, ville } = req.query;
-        const filtres = {};
-        if (statut) filtres.statut = statut;
-        if (ville) filtres.ville = ville;
-
-        const commercants = await Commercant.find(filtres)
-            .populate('proprietaire', 'nom prenom telephone')
-            .sort({ createdAt: -1 });
-
-        res.status(200).json({ status: 'success', results: commercants.length, data: { commercants } });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-    }
-};
-
-// ==================== ADMIN - VALIDER UN COMMERCANT ====================
+// ==================== VALIDER UN COMMERCANT (ADMIN) ====================
 exports.validerCommercant = async (req, res) => {
     try {
-        const { statut } = req.body;
-        const commercant = await Commercant.findByIdAndUpdate(
-            req.params.id,
-            { statut },
-            { new: true }
-        );
+        const commercant = await Commercant.findById(req.params.id)
+            .populate('proprietaire', 'nom prenom email telephone');
+
         if (!commercant) {
-            return res.status(404).json({ status: 'error', message: 'Commerce introuvable' });
+            return res.status(404).json({
+                status: 'error',
+                message: 'Commerçant non trouvé'
+            });
         }
+
+        commercant.est_valide = true;
+        commercant.est_verified = true;
+        commercant.verified_at = new Date();
+        commercant.valide_par = req.user._id;
+        commercant.rejected_reason = null;
+        await commercant.save();
+
+        const notifier = req.app.get('notifierUtilisateur');
+        if (notifier && commercant.proprietaire) {
+            notifier(commercant.proprietaire._id.toString(), 'compte_valide', {
+                type: 'compte_valide',
+                titre: '✅ Compte validé !',
+                message: `Votre boutique "${commercant.nom_boutique}" a été validée.`,
+                commercant_id: commercant._id
+            });
+        }
+
         res.status(200).json({
             status: 'success',
-            message: `Commerce ${statut === 'actif' ? 'validé ✅' : 'suspendu ❌'}`,
+            message: 'Commerçant validé avec succès',
             data: { commercant }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// ==================== REJETER UN COMMERCANT (ADMIN) ====================
+exports.rejeterCommercant = async (req, res) => {
+    try {
+        const { raison } = req.body;
+        const commercant = await Commercant.findById(req.params.id)
+            .populate('proprietaire', 'nom prenom email telephone');
+
+        if (!commercant) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Commerçant non trouvé'
+            });
+        }
+
+        commercant.est_valide = false;
+        commercant.est_verified = false;
+        commercant.rejected_reason = raison;
+        commercant.rejected_at = new Date();
+        commercant.valide_par = req.user._id;
+        await commercant.save();
+
+        const notifier = req.app.get('notifierUtilisateur');
+        if (notifier && commercant.proprietaire) {
+            notifier(commercant.proprietaire._id.toString(), 'compte_rejete', {
+                type: 'compte_rejete',
+                titre: '❌ Compte non validé',
+                message: `Votre boutique "${commercant.nom_boutique}" n'a pas été validée. Raison: ${raison || 'Non conforme'}`,
+                commercant_id: commercant._id,
+                raison: raison
+            });
+        }
+
+        res.status(200).json({
+            status: 'success',
+            message: 'Commerçant rejeté',
+            data: { commercant }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// ==================== ACTIVER/DÉSACTIVER COMMERCANT ====================
+exports.activerCommercant = async (req, res) => {
+    try {
+        const commercant = await Commercant.findByIdAndUpdate(
+            req.params.id,
+            { est_actif: true },
+            { new: true }
+        );
+
+        if (!commercant) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Commerçant non trouvé'
+            });
+        }
+
+        res.status(200).json({
+            status: 'success',
+            message: 'Commerçant activé',
+            data: { commercant }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+exports.desactiverCommercant = async (req, res) => {
+    try {
+        const commercant = await Commercant.findByIdAndUpdate(
+            req.params.id,
+            { est_actif: false },
+            { new: true }
+        );
+
+        if (!commercant) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Commerçant non trouvé'
+            });
+        }
+
+        res.status(200).json({
+            status: 'success',
+            message: 'Commerçant désactivé',
+            data: { commercant }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// ==================== TYPES DE COMMERCE ====================
+exports.getTypesCommerce = async (req, res) => {
+    const types = [
+        { value: 'supermarché_épicerie', label: 'Supermarché / Épicerie', icon: '🛒', categorie: 'alimentation' },
+        { value: 'boulangerie_pâtisserie', label: 'Boulangerie / Pâtisserie', icon: '🥖', categorie: 'alimentation' },
+        { value: 'marché_légumes', label: 'Marché / Légumes', icon: '🥬', categorie: 'alimentation' },
+        { value: 'restaurant_fastfood', label: 'Restaurant / Fast-food', icon: '🍔', categorie: 'alimentation' },
+        { value: 'boucherie_poissonnerie', label: 'Boucherie / Poissonnerie', icon: '🥩', categorie: 'alimentation' },
+        { value: 'téléphonie_électronique', label: 'Téléphonie / Électronique', icon: '📱', categorie: 'électronique' },
+        { value: 'vêtements_mode', label: 'Vêtements / Mode', icon: '👕', categorie: 'mode' },
+        { value: 'coiffure_beauté', label: 'Coiffure / Beauté', icon: '💇', categorie: 'beauté' },
+        { value: 'pharmacie_parapharmacie', label: 'Pharmacie / Parapharmacie', icon: '💊', categorie: 'beauté' },
+        { value: 'quincaillerie_bricolage', label: 'Quincaillerie / Bricolage', icon: '🔧', categorie: 'autre' },
+        { value: 'services', label: 'Services', icon: '🔨', categorie: 'services' },
+        { value: 'autre', label: 'Autre', icon: '🏪', categorie: 'autre' }
+    ];
+
+    res.status(200).json({ status: 'success', data: { types } });
+};
+
+// ==================== STATISTIQUES COMMERCANT ====================
+exports.getStats = async (req, res) => {
+    try {
+        const commercant = await Commercant.findOne({ proprietaire: req.user._id });
+        if (!commercant) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Commerce non trouvé'
+            });
+        }
+
+        const produits = await Produit.find({ commercant: commercant._id });
+        const produitsActifs = produits.filter(p => p.disponible).length;
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                total_commandes: commercant.total_commandes,
+                chiffre_affaires: commercant.chiffre_affaires,
+                note_moyenne: commercant.note_moyenne,
+                total_avis: commercant.total_avis,
+                produits_total: produits.length,
+                produits_actifs: produitsActifs,
+                est_valide: commercant.est_valide,
+                est_actif: commercant.est_actif
+            }
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
