@@ -7,7 +7,8 @@ const User = require('../models/user');
 const assignerLivreurAutomatique = async (commande, req) => {
     try {
         const livreurs = await User.find({
-            role: 'livreur', statut: 'actif',
+            role: 'livreur',
+            statut: 'actif',
             ville: commande.ville,
             'livreur_info.disponible': true
         }).sort({ 'livreur_info.note_moyenne': -1 });
@@ -25,20 +26,17 @@ const assignerLivreurAutomatique = async (commande, req) => {
                 commande.statut = 'livreur_assigne';
                 await commande.save();
 
-                // Notifier le livreur
-                if (req) {
-                    const notifier = req.app.get('notifierUtilisateur');
-                    if (notifier) {
-                        notifier(livreur._id.toString(), 'nouvelle_mission', {
-                            type: 'nouvelle_mission',
-                            titre: '🛵 Nouvelle mission !',
-                            message: `Commande ${commande.reference} à livrer`,
-                            commande_id: commande._id,
-                            reference: commande.reference,
-                            ville: commande.ville,
-                            gain: (commande.montants.frais_livraison * 0.8).toFixed(0) + ' FCFA',
-                        });
-                    }
+                const notifier = req?.app?.get('notifierUtilisateur');
+                if (notifier) {
+                    notifier(livreur._id.toString(), 'nouvelle_mission', {
+                        type: 'nouvelle_mission',
+                        titre: '🛵 Nouvelle mission !',
+                        message: `Commande ${commande.reference} à livrer`,
+                        commande_id: commande._id,
+                        reference: commande.reference,
+                        ville: commande.ville,
+                        gain: (commande.montants.frais_livraison * 0.8).toFixed(0) + ' FCFA',
+                    });
                 }
                 return livreur;
             }
@@ -50,7 +48,7 @@ const assignerLivreurAutomatique = async (commande, req) => {
     }
 };
 
-// ==================== CRÉER UNE COMMANDE ====================
+// ==================== CRÉER UNE COMMANDE (CLIENT) ====================
 exports.creerCommande = async (req, res) => {
     try {
         const { commercant_id, articles, adresse_livraison, paiement_methode } = req.body;
@@ -69,13 +67,16 @@ exports.creerCommande = async (req, res) => {
         for (const item of articles) {
             const produit = await Produit.findById(item.produit_id);
             if (!produit || !produit.disponible) {
-                return res.status(400).json({ status: 'error', message: `Produit indisponible` });
+                return res.status(400).json({ status: 'error', message: 'Produit indisponible' });
             }
             const sous_total_item = produit.prix * item.quantite;
             sous_total += sous_total_item;
             articlesDetail.push({
-                produit: produit._id, nom: produit.nom,
-                prix_unitaire: produit.prix, quantite: item.quantite, sous_total: sous_total_item
+                produit: produit._id,
+                nom: produit.nom,
+                prix_unitaire: produit.prix,
+                quantite: item.quantite,
+                sous_total: sous_total_item
             });
         }
 
@@ -107,7 +108,6 @@ exports.creerCommande = async (req, res) => {
 
         await Commercant.findByIdAndUpdate(commercant._id, { $inc: { total_commandes: 1 } });
 
-        // Notifier le commercant
         const notifier = req.app.get('notifierUtilisateur');
         if (notifier) {
             notifier(commercant.proprietaire.toString(), 'nouvelle_commande', {
@@ -125,8 +125,10 @@ exports.creerCommande = async (req, res) => {
             message: 'Commande passée avec succès !',
             data: {
                 commande: {
-                    id: commande._id, reference: commande.reference,
-                    statut: commande.statut, montants: commande.montants,
+                    id: commande._id,
+                    reference: commande.reference,
+                    statut: commande.statut,
+                    montants: commande.montants,
                     temps_estime: commande.temps_estime
                 }
             }
@@ -148,11 +150,13 @@ exports.mesCommandes = async (req, res) => {
             .populate('commercant', 'nom_boutique ville adresse')
             .populate('livreur', 'nom prenom telephone')
             .select('-historique_statuts -__v')
-            .skip((page - 1) * limit).limit(parseInt(limit))
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit))
             .sort({ createdAt: -1 });
 
         res.status(200).json({ status: 'success', results: commandes.length, data: { commandes } });
     } catch (error) {
+        console.error('Erreur mesCommandes:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -167,18 +171,23 @@ exports.suivreCommande = async (req, res) => {
 
         if (!commande) return res.status(404).json({ status: 'error', message: 'Commande introuvable' });
 
-        if (commande.client.toString() !== req.user._id.toString() &&
-            req.user.role !== 'admin' && req.user.role !== 'gerant_zone') {
+        if (
+            commande.client.toString() !== req.user._id.toString() &&
+            req.user.role !== 'admin' &&
+            req.user.role !== 'gerant_zone'
+        ) {
             return res.status(403).json({ status: 'error', message: 'Accès refusé' });
         }
 
         res.status(200).json({ status: 'success', data: { commande } });
     } catch (error) {
+        console.error('Erreur suivreCommande:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
 
 // ==================== COMMANDES DU COMMERCE ====================
+// ✅ Renommé en commandesCommerce pour correspondre à commandeRoutes.js
 exports.commandesCommerce = async (req, res) => {
     try {
         const commercant = await Commercant.findOne({ proprietaire: req.user._id });
@@ -191,11 +200,13 @@ exports.commandesCommerce = async (req, res) => {
         const commandes = await Commande.find(filtres)
             .populate('client', 'nom prenom telephone')
             .populate('livreur', 'nom prenom telephone')
-            .skip((page - 1) * limit).limit(parseInt(limit))
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit))
             .sort({ createdAt: -1 });
 
         res.status(200).json({ status: 'success', results: commandes.length, data: { commandes } });
     } catch (error) {
+        console.error('Erreur commandesCommerce:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -222,7 +233,6 @@ exports.changerStatutCommerce = async (req, res) => {
         const notifier = req.app.get('notifierUtilisateur');
         const notifierRoom = req.app.get('notifierRoom');
 
-        // Notifier le client
         if (notifier && commande.client) {
             const messages = {
                 acceptee: '✅ Votre commande a été acceptée !',
@@ -239,7 +249,6 @@ exports.changerStatutCommerce = async (req, res) => {
             });
         }
 
-        // Assignation automatique quand prête
         let livreurAssigne = null;
         if (statut === 'prete') {
             livreurAssigne = await assignerLivreurAutomatique(commande, req);
@@ -260,19 +269,29 @@ exports.changerStatutCommerce = async (req, res) => {
             status: 'success',
             message: livreurAssigne
                 ? `Commande ${statut} — Livreur ${livreurAssigne.prenom} assigné ! 🛵`
-                : statut === 'prete' ? "Commande prête — En attente d'un livreur" : `Commande ${statut}`,
-            data: { commande, livreur_assigne: livreurAssigne ? { nom: livreurAssigne.nom, prenom: livreurAssigne.prenom } : null }
+                : statut === 'prete'
+                    ? "Commande prête — En attente d'un livreur"
+                    : `Commande ${statut}`,
+            data: {
+                commande,
+                livreur_assigne: livreurAssigne
+                    ? { nom: livreurAssigne.nom, prenom: livreurAssigne.prenom }
+                    : null
+            }
         });
     } catch (error) {
+        console.error('Erreur changerStatutCommerce:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
 
-// ==================== MISSIONS LIVREUR ====================
+// ==================== MISSIONS DISPONIBLES (LIVREUR) ====================
 exports.missionsDisponibles = async (req, res) => {
     try {
         const commandes = await Commande.find({
-            statut: 'prete', ville: req.user.ville, livreur: null
+            statut: 'prete',
+            ville: req.user.ville,
+            livreur: null
         })
             .populate('commercant', 'nom_boutique adresse ville telephone')
             .select('reference montants adresse_livraison temps_estime commercant createdAt ville')
@@ -280,6 +299,7 @@ exports.missionsDisponibles = async (req, res) => {
 
         res.status(200).json({ status: 'success', results: commandes.length, data: { commandes } });
     } catch (error) {
+        console.error('Erreur missionsDisponibles:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -302,19 +322,20 @@ exports.accepterMission = async (req, res) => {
         commande.statut = 'livreur_assigne';
         await commande.save();
 
-        // Notifier le client
         const notifier = req.app.get('notifierUtilisateur');
         if (notifier) {
             notifier(commande.client.toString(), 'statut_commande', {
                 type: 'statut_commande',
                 titre: '🛵 Un livreur a pris votre commande !',
                 message: `${req.user.prenom} ${req.user.nom} va récupérer votre commande ${commande.reference}`,
-                commande_id: commande._id, statut: 'livreur_assigne',
+                commande_id: commande._id,
+                statut: 'livreur_assigne',
             });
         }
 
         res.status(200).json({ status: 'success', message: 'Mission acceptée ! 🛵', data: { commande } });
     } catch (error) {
+        console.error('Erreur accepterMission:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -336,7 +357,6 @@ exports.changerStatutLivreur = async (req, res) => {
         commande.statut = statut;
         await commande.save();
 
-        // Notifier le client
         const notifier = req.app.get('notifierUtilisateur');
         const messages = {
             en_collecte: '🏃 Votre livreur se dirige vers le commerce',
@@ -348,13 +368,17 @@ exports.changerStatutLivreur = async (req, res) => {
                 type: 'statut_commande',
                 titre: messages[statut] || `Statut: ${statut}`,
                 message: `Commande ${commande.reference}`,
-                commande_id: commande._id, statut,
+                commande_id: commande._id,
+                statut,
             });
         }
 
         if (statut === 'livree') {
             await User.findByIdAndUpdate(req.user._id, {
-                $inc: { 'livreur_info.total_livraisons': 1, 'livreur_info.gains_total': commande.montants.frais_livraison * 0.8 }
+                $inc: {
+                    'livreur_info.total_livraisons': 1,
+                    'livreur_info.gains_total': commande.montants.frais_livraison * 0.8
+                }
             });
             await Commercant.findByIdAndUpdate(commande.commercant._id, {
                 $inc: { chiffre_affaires: commande.montants.sous_total }
@@ -373,9 +397,14 @@ exports.changerStatutLivreur = async (req, res) => {
         res.status(200).json({
             status: 'success',
             message: statut === 'livree' ? '🎉 Livraison terminée !' : `Statut: ${statut}`,
-            data: { commande, google_maps_url: googleMapsUrl, client_telephone: commande.client?.telephone }
+            data: {
+                commande,
+                google_maps_url: googleMapsUrl,
+                client_telephone: commande.client?.telephone
+            }
         });
     } catch (error) {
+        console.error('Erreur changerStatutLivreur:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -384,7 +413,11 @@ exports.changerStatutLivreur = async (req, res) => {
 exports.noterCommande = async (req, res) => {
     try {
         const { note_commercant, note_livreur, commentaire } = req.body;
-        const commande = await Commande.findOne({ _id: req.params.id, client: req.user._id, statut: 'livree' });
+        const commande = await Commande.findOne({
+            _id: req.params.id,
+            client: req.user._id,
+            statut: 'livree'
+        });
         if (!commande) return res.status(404).json({ status: 'error', message: 'Commande introuvable ou pas livrée' });
 
         commande.note_client = { note_commercant, note_livreur, commentaire, date: new Date() };
@@ -392,6 +425,7 @@ exports.noterCommande = async (req, res) => {
 
         res.status(200).json({ status: 'success', message: 'Merci pour votre avis !', data: { note: commande.note_client } });
     } catch (error) {
+        console.error('Erreur noterCommande:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -408,11 +442,15 @@ exports.toutesLesCommandes = async (req, res) => {
             .populate('client', 'nom prenom telephone')
             .populate('commercant', 'nom_boutique ville')
             .populate('livreur', 'nom prenom telephone')
-            .skip((page - 1) * limit).limit(parseInt(limit))
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit))
             .sort({ createdAt: -1 });
 
-        res.status(200).json({ status: 'success', results: commandes.length, data: { commandes } });
+        const total = await Commande.countDocuments(filtres);
+
+        res.status(200).json({ status: 'success', results: commandes.length, total, data: { commandes } });
     } catch (error) {
+        console.error('Erreur toutesLesCommandes:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -425,7 +463,9 @@ exports.assignerLivreurManuellement = async (req, res) => {
         if (!livreur) return res.status(404).json({ status: 'error', message: 'Livreur introuvable' });
 
         const commande = await Commande.findByIdAndUpdate(
-            req.params.id, { livreur: livreur_id, statut: 'livreur_assigne' }, { new: true }
+            req.params.id,
+            { livreur: livreur_id, statut: 'livreur_assigne' },
+            { new: true }
         ).populate('livreur', 'nom prenom telephone');
         if (!commande) return res.status(404).json({ status: 'error', message: 'Commande introuvable' });
 
@@ -439,8 +479,13 @@ exports.assignerLivreurManuellement = async (req, res) => {
             });
         }
 
-        res.status(200).json({ status: 'success', message: `Livreur ${livreur.prenom} assigné !`, data: { commande } });
+        res.status(200).json({
+            status: 'success',
+            message: `Livreur ${livreur.prenom} assigné !`,
+            data: { commande }
+        });
     } catch (error) {
+        console.error('Erreur assignerLivreurManuellement:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -457,13 +502,9 @@ exports.getCommandesEnCoursLivreur = async (req, res) => {
             .select('-historique_statuts -__v -note_client -annulation')
             .sort({ updatedAt: -1 });
 
-        res.status(200).json({
-            status: 'success',
-            results: commandes.length,
-            data: { commandes }
-        });
+        res.status(200).json({ status: 'success', results: commandes.length, data: { commandes } });
     } catch (error) {
-        console.error('Erreur commandes en cours:', error);
+        console.error('Erreur getCommandesEnCoursLivreur:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };

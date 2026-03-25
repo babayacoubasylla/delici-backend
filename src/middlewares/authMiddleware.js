@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 
-// Vérifier le token JWT
+// ==================== PROTEGER (vérifier le token JWT) ====================
 exports.proteger = async (req, res, next) => {
     try {
         let token;
@@ -38,7 +38,7 @@ exports.proteger = async (req, res, next) => {
     }
 };
 
-// Restreindre l'accès à certains rôles
+// ==================== RESTREINDRE (vérifier le rôle) ====================
 exports.restreindre = (...roles) => {
     return (req, res, next) => {
         if (!roles.includes(req.user.role)) {
