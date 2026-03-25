@@ -182,6 +182,37 @@ exports.getCommercantsValides = async (req, res) => {
     }
 };
 
+// ==================== DÉTAIL D'UN COMMERCANT (PUBLIC) ====================
+exports.getCommercantById = async (req, res) => {
+    try {
+        const commercant = await Commercant.findById(req.params.id)
+            .select('-valide_par -rejected_reason -rejected_at -documents -commission_taux')
+            .populate('proprietaire', 'nom prenom telephone');
+
+        if (!commercant) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Commerçant non trouvé'
+            });
+        }
+
+        if (!commercant.est_valide || !commercant.est_actif) {
+            return res.status(403).json({
+                status: 'error',
+                message: "Ce commerce n'est pas disponible"
+            });
+        }
+
+        res.status(200).json({
+            status: 'success',
+            data: { commercant }
+        });
+    } catch (error) {
+        console.error('Erreur getCommercantById:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
 // ==================== VALIDER UN COMMERCANT (ADMIN) ====================
 exports.validerCommercant = async (req, res) => {
     try {
@@ -195,7 +226,6 @@ exports.validerCommercant = async (req, res) => {
             });
         }
 
-        // ✅ Mise à jour uniquement des champs existants dans le schéma
         commercant.est_valide = true;
         commercant.est_verified = true;
         commercant.est_actif = true;
@@ -205,7 +235,6 @@ exports.validerCommercant = async (req, res) => {
         commercant.rejected_reason = undefined;
         commercant.rejected_at = undefined;
 
-        // ✅ validateBeforeSave: false évite les erreurs sur champs optionnels
         await commercant.save({ validateBeforeSave: false });
 
         const notifier = req.app.get('notifierUtilisateur');

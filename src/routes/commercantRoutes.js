@@ -7,6 +7,7 @@ const { proteger, restreindre } = require('../middlewares/authMiddleware');
 router.get('/', ctrl.getCommercantsValides);
 router.get('/types', ctrl.getTypesCommerce);
 router.get('/valides', ctrl.getCommercantsValides);
+router.get('/:id', ctrl.getCommercantById); // ✅ détail d'un commerce (sans token)
 
 // ==================== ROUTES AVEC AUTHENTIFICATION ====================
 router.use(proteger);
