@@ -1,26 +1,27 @@
 const express = require('express');
 const router = express.Router();
-const ctrl = require('../controllers/commandeController');
+const ctrl = require('../controllers/commercantController');
 const { proteger, restreindre } = require('../middlewares/authMiddleware');
 
-// Client
-router.post('/', proteger, restreindre('client'), ctrl.creerCommande);
-router.get('/mes-commandes', proteger, restreindre('client'), ctrl.mesCommandes);
-router.get('/suivi/:id', proteger, ctrl.suivreCommande);
-router.post('/:id/noter', proteger, restreindre('client'), ctrl.noterCommande);
+// ==================== ROUTES PUBLIQUES ====================
+// Route principale pour récupérer les commerçants validés
+router.get('/', ctrl.getCommercantsValides);
+router.get('/types', ctrl.getTypesCommerce);
+router.get('/valides', ctrl.getCommercantsValides);
 
-// Commercant
-router.get('/commerce/liste', proteger, restreindre('commercant'), ctrl.commandesCommerce);
-router.patch('/commerce/:id/statut', proteger, restreindre('commercant'), ctrl.changerStatutCommerce);
+// ==================== ROUTES COMMERCANT CONNECTÉ ====================
+router.use(proteger);
 
-// Livreur
-router.get('/livreur/missions', proteger, restreindre('livreur'), ctrl.missionsDisponibles);
-router.get('/livreur/en-cours', proteger, restreindre('livreur'), ctrl.getCommandesEnCoursLivreur);
-router.patch('/livreur/:id/accepter', proteger, restreindre('livreur'), ctrl.accepterMission);
-router.patch('/livreur/:id/statut', proteger, restreindre('livreur'), ctrl.changerStatutLivreur);
+router.post('/inscription', restreindre('commercant'), ctrl.inscrireCommerce);
+router.get('/mon-compte', restreindre('commercant'), ctrl.monCompte);
+router.put('/mon-compte', restreindre('commercant'), ctrl.mettreAJourMonCompte);
+router.get('/stats', restreindre('commercant'), ctrl.getStats);
 
-// Admin / Gérant — assignation manuelle + toutes les commandes
-router.get('/admin/toutes', proteger, restreindre('admin', 'gerant_zone'), ctrl.toutesLesCommandes);
-router.patch('/admin/:id/assigner', proteger, restreindre('admin', 'gerant_zone'), ctrl.assignerLivreurManuellement);
+// ==================== ROUTES ADMIN ====================
+router.get('/admin/tous', restreindre('admin', 'gerant_zone'), ctrl.getAllCommercants);
+router.patch('/admin/:id/valider', restreindre('admin', 'gerant_zone'), ctrl.validerCommercant);
+router.patch('/admin/:id/rejeter', restreindre('admin', 'gerant_zone'), ctrl.rejeterCommercant);
+router.patch('/admin/:id/activer', restreindre('admin', 'gerant_zone'), ctrl.activerCommercant);
+router.patch('/admin/:id/desactiver', restreindre('admin', 'gerant_zone'), ctrl.desactiverCommercant);
 
 module.exports = router;

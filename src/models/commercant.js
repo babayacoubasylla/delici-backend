@@ -4,7 +4,8 @@ const commercantSchema = new mongoose.Schema({
     proprietaire: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
+        unique: true
     },
     nom_boutique: {
         type: String,
@@ -14,13 +15,33 @@ const commercantSchema = new mongoose.Schema({
     slug: {
         type: String,
         unique: true,
-        sparse: true, // ✅ permet plusieurs documents sans slug (null ignoré par l'index)
+        sparse: true,
         lowercase: true
+    },
+    type_commerce: {
+        type: String,
+        enum: [
+            'supermarché_épicerie',
+            'boulangerie_pâtisserie',
+            'marché_légumes',
+            'restaurant_fastfood',
+            'boucherie_poissonnerie',
+            'téléphonie_électronique',
+            'vêtements_mode',
+            'coiffure_beauté',
+            'pharmacie_parapharmacie',
+            'quincaillerie_bricolage',
+            'services',
+            'autre'
+        ],
+        default: 'autre',
+        required: true
     },
     categorie: {
         type: String,
-        required: true,
-        enum: ['restaurant', 'marche', 'supermarche', 'pharmacie', 'boulangerie', 'autre']
+        enum: ['alimentation', 'électronique', 'beauté', 'mode', 'services', 'autre'],
+        default: 'autre',
+        required: true
     },
     description: String,
     photo_couverture: String,
@@ -35,6 +56,8 @@ const commercantSchema = new mongoose.Schema({
     },
     adresse: {
         quartier: { type: String, required: true },
+        rue: String,
+        point_repere: String,
         description: String,
         coordonnees: {
             latitude: Number,
@@ -45,19 +68,28 @@ const commercantSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    email: String,
     horaires: {
-        lundi:    { ouvert: Boolean, ouverture: String, fermeture: String },
-        mardi:    { ouvert: Boolean, ouverture: String, fermeture: String },
-        mercredi: { ouvert: Boolean, ouverture: String, fermeture: String },
-        jeudi:    { ouvert: Boolean, ouverture: String, fermeture: String },
-        vendredi: { ouvert: Boolean, ouverture: String, fermeture: String },
-        samedi:   { ouvert: Boolean, ouverture: String, fermeture: String },
-        dimanche: { ouvert: Boolean, ouverture: String, fermeture: String }
+        lundi: { ouvert: Boolean, ouverture: String, fermeture: String, ferme: Boolean },
+        mardi: { ouvert: Boolean, ouverture: String, fermeture: String, ferme: Boolean },
+        mercredi: { ouvert: Boolean, ouverture: String, fermeture: String, ferme: Boolean },
+        jeudi: { ouvert: Boolean, ouverture: String, fermeture: String, ferme: Boolean },
+        vendredi: { ouvert: Boolean, ouverture: String, fermeture: String, ferme: Boolean },
+        samedi: { ouvert: Boolean, ouverture: String, fermeture: String, ferme: Boolean },
+        dimanche: { ouvert: Boolean, ouverture: String, fermeture: String, ferme: Boolean }
     },
     statut: {
         type: String,
         enum: ['en_attente', 'actif', 'suspendu', 'ferme'],
         default: 'en_attente'
+    },
+    est_valide: {
+        type: Boolean,
+        default: false
+    },
+    est_actif: {
+        type: Boolean,
+        default: true
     },
     est_ouvert: {
         type: Boolean,
@@ -65,15 +97,15 @@ const commercantSchema = new mongoose.Schema({
     },
     temps_preparation_moyen: {
         type: Number,
-        default: 20 // minutes
+        default: 20
     },
     frais_livraison: {
         type: Number,
-        default: 500 // FCFA
+        default: 500
     },
     commande_minimum: {
         type: Number,
-        default: 1000 // FCFA
+        default: 1000
     },
     note_moyenne: {
         type: Number,
@@ -93,22 +125,39 @@ const commercantSchema = new mongoose.Schema({
     },
     commission_taux: {
         type: Number,
-        default: 15 // pourcentage
+        default: 15
     },
-    // Documents de vérification
+    zones_livraison: [{
+        quartier: String,
+        frais_supplementaires: Number
+    }],
+    photos: [String],
     documents: {
         rccm: String,
-        cni_proprietaire: String
+        cni_proprietaire: String,
+        identifiant_fiscal: String
     },
+    est_verified: {
+        type: Boolean,
+        default: false
+    },
+    verified_at: Date,
     valide_par: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
-    }
+    },
+    rejected_reason: String,
+    rejected_at: Date
 }, {
     timestamps: true
 });
 
-// ✅ Fonction utilitaire exportée pour générer un slug (utilisable dans le seed aussi)
+// Index pour les recherches
+commercantSchema.index({ ville: 1, est_valide: 1, est_actif: 1 });
+commercantSchema.index({ type_commerce: 1, categorie: 1 });
+commercantSchema.index({ nom_boutique: 'text', description: 'text' });
+
+// Fonction utilitaire pour générer un slug
 const genererSlug = (nomBoutique) => {
     return nomBoutique
         .toLowerCase()
@@ -122,8 +171,6 @@ const genererSlug = (nomBoutique) => {
         .replace(/^-|-$/g, '') + '-' + Date.now();
 };
 
-// Hook pre('save') — fonctionne pour .create() et .save()
-// ⚠️ Ne se déclenche PAS avec insertMany() → utiliser genererSlug() manuellement dans ce cas
 commercantSchema.pre('save', function (next) {
     if (this.isModified('nom_boutique') || !this.slug) {
         this.slug = genererSlug(this.nom_boutique);
@@ -134,4 +181,4 @@ commercantSchema.pre('save', function (next) {
 const Commercant = mongoose.model('Commercant', commercantSchema);
 
 module.exports = Commercant;
-module.exports.genererSlug = genererSlug; // ✅ exporté pour usage dans seed.js
+module.exports.genererSlug = genererSlug;
