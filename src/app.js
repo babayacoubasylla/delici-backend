@@ -16,7 +16,8 @@ const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:3000',
     'http://127.0.0.1:5173',
-    process.env.FRONTEND_URL, // URL Vercel en production
+    'https://delici-frontend.vercel.app',
+    process.env.FRONTEND_URL,
 ].filter(Boolean);
 
 // ==================== SOCKET.IO ====================
@@ -105,7 +106,6 @@ connectDB();
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
     origin: (origin, callback) => {
-        // Autoriser les requêtes sans origin (Postman, mobile...)
         if (!origin) return callback(null, true);
         if (allowedOrigins.includes(origin)) return callback(null, true);
         callback(new Error(`CORS bloqué: ${origin}`));
