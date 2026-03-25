@@ -1,6 +1,6 @@
-const Commercant = require('../models/Commercant');
+const Commercant = require('../models/commercant');
 const User = require('../models/User');
-const Produit = require('../models/Produit');
+const Produit = require('../models/produit');
 
 // Déterminer la catégorie principale en fonction du type de commerce
 const determineCategorie = (type_commerce) => {
@@ -29,6 +29,7 @@ exports.inscrireCommerce = async (req, res) => {
             ville, adresse, telephone, email
         } = req.body;
 
+        // Vérifier si l'utilisateur a déjà un commerce
         const commerceExistant = await Commercant.findOne({ proprietaire: req.user._id });
         if (commerceExistant) {
             return res.status(400).json({
@@ -40,16 +41,18 @@ exports.inscrireCommerce = async (req, res) => {
         const commercant = await Commercant.create({
             proprietaire: req.user._id,
             nom_boutique,
-            type_commerce,
+            type_commerce: type_commerce || 'autre',
             categorie: determineCategorie(type_commerce),
             description,
             ville,
             adresse,
             telephone,
             email: email || req.user.email,
-            est_valide: false
+            est_valide: false,
+            est_actif: true
         });
 
+        // Mettre à jour le rôle de l'utilisateur
         await User.findByIdAndUpdate(req.user._id, { role: 'commercant' });
 
         res.status(201).json({
@@ -58,6 +61,7 @@ exports.inscrireCommerce = async (req, res) => {
             data: { commercant }
         });
     } catch (error) {
+        console.error('Erreur inscription commerce:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -80,6 +84,7 @@ exports.monCompte = async (req, res) => {
             data: { commercant }
         });
     } catch (error) {
+        console.error('Erreur monCompte:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -120,6 +125,7 @@ exports.mettreAJourMonCompte = async (req, res) => {
             data: { commercant }
         });
     } catch (error) {
+        console.error('Erreur mise à jour compte:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -130,6 +136,7 @@ exports.getAllCommercants = async (req, res) => {
         const { statut, type_commerce, ville, page = 1, limit = 20 } = req.query;
         const filtres = {};
 
+        // Filtre par statut de validation
         if (statut === 'en_attente') filtres.est_valide = false;
         else if (statut === 'valide') filtres.est_valide = true;
         if (type_commerce) filtres.type_commerce = type_commerce;
@@ -151,6 +158,7 @@ exports.getAllCommercants = async (req, res) => {
             data: { commercants }
         });
     } catch (error) {
+        console.error('Erreur getAllCommercants:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -180,6 +188,7 @@ exports.getCommercantsValides = async (req, res) => {
             data: { commercants }
         });
     } catch (error) {
+        console.error('Erreur getCommercantsValides:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -204,12 +213,13 @@ exports.validerCommercant = async (req, res) => {
         commercant.rejected_reason = null;
         await commercant.save();
 
+        // Notifier le commerçant
         const notifier = req.app.get('notifierUtilisateur');
         if (notifier && commercant.proprietaire) {
             notifier(commercant.proprietaire._id.toString(), 'compte_valide', {
                 type: 'compte_valide',
                 titre: '✅ Compte validé !',
-                message: `Votre boutique "${commercant.nom_boutique}" a été validée.`,
+                message: `Votre boutique "${commercant.nom_boutique}" a été validée. Vous pouvez maintenant gérer vos produits et recevoir des commandes.`,
                 commercant_id: commercant._id
             });
         }
@@ -220,6 +230,7 @@ exports.validerCommercant = async (req, res) => {
             data: { commercant }
         });
     } catch (error) {
+        console.error('Erreur validation commercant:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
@@ -245,12 +256,13 @@ exports.rejeterCommercant = async (req, res) => {
         commercant.valide_par = req.user._id;
         await commercant.save();
 
+        // Notifier le commerçant
         const notifier = req.app.get('notifierUtilisateur');
         if (notifier && commercant.proprietaire) {
             notifier(commercant.proprietaire._id.toString(), 'compte_rejete', {
                 type: 'compte_rejete',
                 titre: '❌ Compte non validé',
-                message: `Votre boutique "${commercant.nom_boutique}" n'a pas été validée. Raison: ${raison || 'Non conforme'}`,
+                message: `Votre boutique "${commercant.nom_boutique}" n'a pas été validée. Raison: ${raison || 'Non conforme aux conditions'}`,
                 commercant_id: commercant._id,
                 raison: raison
             });
@@ -262,23 +274,35 @@ exports.rejeterCommercant = async (req, res) => {
             data: { commercant }
         });
     } catch (error) {
+        console.error('Erreur rejet commercant:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
 
-// ==================== ACTIVER/DÉSACTIVER COMMERCANT ====================
+// ==================== ACTIVER UN COMMERCANT (ADMIN) ====================
 exports.activerCommercant = async (req, res) => {
     try {
         const commercant = await Commercant.findByIdAndUpdate(
             req.params.id,
             { est_actif: true },
             { new: true }
-        );
+        ).populate('proprietaire', 'nom prenom email');
 
         if (!commercant) {
             return res.status(404).json({
                 status: 'error',
                 message: 'Commerçant non trouvé'
+            });
+        }
+
+        // Notifier le commerçant
+        const notifier = req.app.get('notifierUtilisateur');
+        if (notifier && commercant.proprietaire) {
+            notifier(commercant.proprietaire._id.toString(), 'compte_active', {
+                type: 'compte_active',
+                titre: '🟢 Compte activé',
+                message: `Votre boutique "${commercant.nom_boutique}" a été réactivée.`,
+                commercant_id: commercant._id
             });
         }
 
@@ -288,22 +312,35 @@ exports.activerCommercant = async (req, res) => {
             data: { commercant }
         });
     } catch (error) {
+        console.error('Erreur activation commercant:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
 
+// ==================== DÉSACTIVER UN COMMERCANT (ADMIN) ====================
 exports.desactiverCommercant = async (req, res) => {
     try {
         const commercant = await Commercant.findByIdAndUpdate(
             req.params.id,
             { est_actif: false },
             { new: true }
-        );
+        ).populate('proprietaire', 'nom prenom email');
 
         if (!commercant) {
             return res.status(404).json({
                 status: 'error',
                 message: 'Commerçant non trouvé'
+            });
+        }
+
+        // Notifier le commerçant
+        const notifier = req.app.get('notifierUtilisateur');
+        if (notifier && commercant.proprietaire) {
+            notifier(commercant.proprietaire._id.toString(), 'compte_desactive', {
+                type: 'compte_desactive',
+                titre: '🔴 Compte désactivé',
+                message: `Votre boutique "${commercant.nom_boutique}" a été désactivée. Contactez l'administrateur pour plus d'informations.`,
+                commercant_id: commercant._id
             });
         }
 
@@ -313,11 +350,12 @@ exports.desactiverCommercant = async (req, res) => {
             data: { commercant }
         });
     } catch (error) {
+        console.error('Erreur désactivation commercant:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
 
-// ==================== TYPES DE COMMERCE ====================
+// ==================== TYPES DE COMMERCE DISPONIBLES ====================
 exports.getTypesCommerce = async (req, res) => {
     const types = [
         { value: 'supermarché_épicerie', label: 'Supermarché / Épicerie', icon: '🛒', categorie: 'alimentation' },
@@ -349,22 +387,24 @@ exports.getStats = async (req, res) => {
         }
 
         const produits = await Produit.find({ commercant: commercant._id });
-        const produitsActifs = produits.filter(p => p.disponible).length;
+        const produitsActifs = produits.filter(p => p.disponible === true).length;
 
         res.status(200).json({
             status: 'success',
             data: {
-                total_commandes: commercant.total_commandes,
-                chiffre_affaires: commercant.chiffre_affaires,
-                note_moyenne: commercant.note_moyenne,
-                total_avis: commercant.total_avis,
+                total_commandes: commercant.total_commandes || 0,
+                chiffre_affaires: commercant.chiffre_affaires || 0,
+                note_moyenne: commercant.note_moyenne || 0,
+                total_avis: commercant.total_avis || 0,
                 produits_total: produits.length,
                 produits_actifs: produitsActifs,
                 est_valide: commercant.est_valide,
-                est_actif: commercant.est_actif
+                est_actif: commercant.est_actif,
+                est_ouvert: commercant.est_ouvert
             }
         });
     } catch (error) {
+        console.error('Erreur getStats:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 };
