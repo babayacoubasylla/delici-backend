@@ -1,5 +1,5 @@
 const Commercant = require('../models/commercant');
-const User = require('../models/User');
+const User = require('../models/user');
 const Produit = require('../models/produit');
 
 // Déterminer la catégorie principale en fonction du type de commerce
@@ -29,7 +29,6 @@ exports.inscrireCommerce = async (req, res) => {
             ville, adresse, telephone, email
         } = req.body;
 
-        // Vérifier si l'utilisateur a déjà un commerce
         const commerceExistant = await Commercant.findOne({ proprietaire: req.user._id });
         if (commerceExistant) {
             return res.status(400).json({
@@ -52,7 +51,6 @@ exports.inscrireCommerce = async (req, res) => {
             est_actif: true
         });
 
-        // Mettre à jour le rôle de l'utilisateur
         await User.findByIdAndUpdate(req.user._id, { role: 'commercant' });
 
         res.status(201).json({
@@ -136,7 +134,6 @@ exports.getAllCommercants = async (req, res) => {
         const { statut, type_commerce, ville, page = 1, limit = 20 } = req.query;
         const filtres = {};
 
-        // Filtre par statut de validation
         if (statut === 'en_attente') filtres.est_valide = false;
         else if (statut === 'valide') filtres.est_valide = true;
         if (type_commerce) filtres.type_commerce = type_commerce;
@@ -213,13 +210,12 @@ exports.validerCommercant = async (req, res) => {
         commercant.rejected_reason = null;
         await commercant.save();
 
-        // Notifier le commerçant
         const notifier = req.app.get('notifierUtilisateur');
         if (notifier && commercant.proprietaire) {
             notifier(commercant.proprietaire._id.toString(), 'compte_valide', {
                 type: 'compte_valide',
                 titre: '✅ Compte validé !',
-                message: `Votre boutique "${commercant.nom_boutique}" a été validée. Vous pouvez maintenant gérer vos produits et recevoir des commandes.`,
+                message: `Votre boutique "${commercant.nom_boutique}" a été validée.`,
                 commercant_id: commercant._id
             });
         }
@@ -256,13 +252,12 @@ exports.rejeterCommercant = async (req, res) => {
         commercant.valide_par = req.user._id;
         await commercant.save();
 
-        // Notifier le commerçant
         const notifier = req.app.get('notifierUtilisateur');
         if (notifier && commercant.proprietaire) {
             notifier(commercant.proprietaire._id.toString(), 'compte_rejete', {
                 type: 'compte_rejete',
                 titre: '❌ Compte non validé',
-                message: `Votre boutique "${commercant.nom_boutique}" n'a pas été validée. Raison: ${raison || 'Non conforme aux conditions'}`,
+                message: `Votre boutique "${commercant.nom_boutique}" n'a pas été validée. Raison: ${raison || 'Non conforme'}`,
                 commercant_id: commercant._id,
                 raison: raison
             });
@@ -295,7 +290,6 @@ exports.activerCommercant = async (req, res) => {
             });
         }
 
-        // Notifier le commerçant
         const notifier = req.app.get('notifierUtilisateur');
         if (notifier && commercant.proprietaire) {
             notifier(commercant.proprietaire._id.toString(), 'compte_active', {
@@ -333,13 +327,12 @@ exports.desactiverCommercant = async (req, res) => {
             });
         }
 
-        // Notifier le commerçant
         const notifier = req.app.get('notifierUtilisateur');
         if (notifier && commercant.proprietaire) {
             notifier(commercant.proprietaire._id.toString(), 'compte_desactive', {
                 type: 'compte_desactive',
                 titre: '🔴 Compte désactivé',
-                message: `Votre boutique "${commercant.nom_boutique}" a été désactivée. Contactez l'administrateur pour plus d'informations.`,
+                message: `Votre boutique "${commercant.nom_boutique}" a été désactivée.`,
                 commercant_id: commercant._id
             });
         }
