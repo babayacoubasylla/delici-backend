@@ -4,11 +4,14 @@ const ctrl = require('../controllers/commercantController');
 const { proteger, restreindre } = require('../middlewares/authMiddleware');
 
 // ==================== ROUTES PUBLIQUES ====================
+// Ces routes sont accessibles sans authentification
+router.get('/', ctrl.getCommercantsValides);
 router.get('/types', ctrl.getTypesCommerce);
 router.get('/valides', ctrl.getCommercantsValides);
 
 // ==================== ROUTES COMMERCANT CONNECTÉ ====================
-router.use(proteger); // Toutes les routes ci-dessous nécessitent une authentification
+// Toutes les routes ci-dessous nécessitent une authentification
+router.use(proteger);
 
 router.post('/inscription', restreindre('commercant'), ctrl.inscrireCommerce);
 router.get('/mon-compte', restreindre('commercant'), ctrl.monCompte);
