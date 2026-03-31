@@ -63,13 +63,14 @@ exports.creerMonCommerce = async (req, res) => {
             temps_preparation_moyen: temps_preparation_moyen || 20,
             commande_minimum: commande_minimum || 1000,
             ville: ville || req.user.ville,
-            statut: 'actif', // ✅ Validé automatiquement
+            statut: 'en_attente',
+            est_valide: false,
             est_ouvert: false,
         });
 
         res.status(201).json({
             status: 'success',
-            message: 'Commerce créé avec succès !',
+            message: 'Commerce créé avec succès ! En attente de validation.',
             data: { commercant }
         });
     } catch (error) {
@@ -111,11 +112,24 @@ exports.modifierMonCommerce = async (req, res) => {
 exports.toggleOuverture = async (req, res) => {
     try {
         const commercant = await Commercant.findOne({ proprietaire: req.user._id });
+
         if (!commercant) {
-            return res.status(404).json({ status: 'error', message: 'Commerce introuvable' });
+            return res.status(404).json({
+                status: 'error',
+                message: "Commerce introuvable. Créez votre commerce d'abord."
+            });
         }
+
+        if (commercant.statut !== 'actif' || !commercant.est_valide) {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Votre commerce doit être validé par un administrateur avant de pouvoir ouvrir.'
+            });
+        }
+
         commercant.est_ouvert = !commercant.est_ouvert;
         await commercant.save();
+
         res.status(200).json({
             status: 'success',
             message: commercant.est_ouvert ? '🟢 Commerce ouvert !' : '🔴 Commerce fermé',
@@ -148,14 +162,30 @@ exports.tousLesCommercants = async (req, res) => {
 exports.validerCommercant = async (req, res) => {
     try {
         const { statut } = req.body;
+
+        const miseAJour = { statut };
+
+        if (statut === 'actif') {
+            miseAJour.est_valide = true;
+            miseAJour.est_actif = true;
+        }
+
+        if (statut === 'suspendu') {
+            miseAJour.est_valide = false;
+            miseAJour.est_actif = false;
+            miseAJour.est_ouvert = false;
+        }
+
         const commercant = await Commercant.findByIdAndUpdate(
             req.params.id,
-            { statut },
+            miseAJour,
             { new: true }
         );
+
         if (!commercant) {
             return res.status(404).json({ status: 'error', message: 'Commerce introuvable' });
         }
+
         res.status(200).json({
             status: 'success',
             message: `Commerce ${statut === 'actif' ? 'validé ✅' : 'suspendu ❌'}`,
