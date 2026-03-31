@@ -2,25 +2,15 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/produitController');
 const { proteger, restreindre } = require('../middlewares/authMiddleware');
-const { uploadProduit } = require('../middlewares/uploadMiddleware');
 
+// PUBLIC — liste des produits d'un commercant
 router.get('/commercant/:commercantId', ctrl.getProduits);
 
-router.post('/', proteger, restreindre('commercant'), (req, res, next) => {
-    uploadProduit(req, res, (err) => {
-        if (err) return res.status(400).json({ status: 'error', message: err.message });
-        next();
-    });
-}, ctrl.creerProduit);
-
-router.patch('/:id', proteger, restreindre('commercant'), (req, res, next) => {
-    uploadProduit(req, res, (err) => {
-        if (err) return res.status(400).json({ status: 'error', message: err.message });
-        next();
-    });
-}, ctrl.modifierProduit);
-
-router.delete('/:id', proteger, restreindre('commercant'), ctrl.supprimerProduit);
-router.patch('/:id/disponibilite', proteger, restreindre('commercant'), ctrl.toggleDisponibilite);
+// PROTÉGÉES — commercant connecté
+router.use(proteger);
+router.post('/', restreindre('commercant'), ctrl.creerProduit);
+router.patch('/:id', restreindre('commercant'), ctrl.modifierProduit);
+router.delete('/:id', restreindre('commercant'), ctrl.supprimerProduit);
+router.patch('/:id/disponibilite', restreindre('commercant'), ctrl.toggleDisponibilite);
 
 module.exports = router;
